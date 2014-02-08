@@ -41,7 +41,7 @@ if __name__ == '__main__':
     info = [
         {
             'image_name': 'bh_redis',
-            'container_name': 'safe_d-redis_stats'
+            'container_name': ''
         }
     ]
 

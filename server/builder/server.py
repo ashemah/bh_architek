@@ -2,7 +2,7 @@ import zerorpc
 import docker
 
 
-class Builder(object):
+class BuilderServer(object):
 
     class ContainerExists(Exception):
         pass
@@ -20,7 +20,7 @@ class Builder(object):
     STATE_STOPPED = 4
 
     def __init__(self):
-        self.docker = docker.Client(base_url='unix://var/run/docker.sock', version='1.6', timeout=10)
+        self.docker = docker.Client(base_url='unix://var/run/docker.sock', version='1.7', timeout=10)
 
     def build(self, app_id, service_list):
         print "build: %s" % service_list
@@ -34,8 +34,10 @@ class Builder(object):
             container_info = self.container_info(container_name)
             container_status = container_info['state']
 
-            if container_status != Builder.STATE_NOTFOUND:
-                raise Builder.ContainerExists("Container '%s' exists. Build aborted." % container_name)
+            print container_info
+
+            if container_status != BuilderServer.STATE_NOTFOUND:
+                raise BuilderServer.ContainerExists("Container '%s' exists. Build aborted." % container_name)
 
             build_res = self.docker.create_container(image_name, name=container_name)
             container_id = build_res['Id']
@@ -60,13 +62,13 @@ class Builder(object):
 
         for item in info:
             container_name = item['container_name']
-            self.docker.start(container_name)
+            self.docker.start(container_name, publish_all_ports=True)
 
             container_info = self.container_info(container_name)
             container_status = container_info['state']
 
             item_res = {
-                'container_id': container_name,
+                'container_name': container_name,
                 'container_status': container_status
             }
 
@@ -87,7 +89,7 @@ class Builder(object):
             container_status = container_info['state']
 
             item_res = {
-                'container_id': container_name,
+                'container_name': container_name,
                 'container_status': container_status
             }
 
@@ -108,7 +110,7 @@ class Builder(object):
             container_status = container_info['state']
 
             item_res = {
-                'container_id': container_name,
+                'container_name': container_name,
                 'container_status': container_status
             }
 
@@ -129,7 +131,7 @@ class Builder(object):
             container_status = container_info['state']
 
             item_res = {
-                'container_id': container_name,
+                'container_name': container_name,
                 'container_status': container_status
             }
 
@@ -143,16 +145,23 @@ class Builder(object):
         res = []
 
         for item in info:
-            container_name = item['container_name']
-            container_info = self.container_info(container_name)
-            container_status = container_info['state']
 
-            image_status = self.image_status(item['image_name'])
+            item_res = {}
 
-            item_res = {
-                'container_status': container_status,
-                'image_status': image_status
-            }
+            if 'container_name' in item:
+                container_name = item['container_name']
+                container_info = self.container_info(container_name)
+                container_status = container_info['state']
+
+                item_res['container_name'] = container_name
+                item_res['container_status'] = container_status
+
+            if 'image_name' in item:
+                image_name = item['image_name']
+                image_status = self.image_status(image_name)
+
+                item_res['image_name'] = image_name
+                item_res['image_status'] = image_status
 
             res.append(item_res)
 
@@ -161,22 +170,22 @@ class Builder(object):
     def image_status(self, image_name):
         try:
             info = self.docker.inspect_image(image_name)
-            return Builder.IMAGE_FOUND
+            return BuilderServer.IMAGE_FOUND
         except docker.APIError, e:
-            return Builder.IMAGE_NOTFOUND
+            return BuilderServer.IMAGE_NOTFOUND
 
     def container_info(self, container_name):
 
-        state = Builder.STATE_NOTFOUND
+        state = BuilderServer.STATE_NOTFOUND
         ports = []
 
         try:
             info = self.docker.inspect_container(container_name)
             state_info = info['State']
             if state_info['Running'] is True:
-                state = Builder.STATE_RUNNING
+                state = BuilderServer.STATE_RUNNING
             else:
-                state = Builder.STATE_STOPPED
+                state = BuilderServer.STATE_STOPPED
 
         except docker.APIError, e:
             pass
@@ -191,7 +200,7 @@ class Builder(object):
     @staticmethod
     def run(hostname):
 
-        s = zerorpc.Server(Builder())
+        s = zerorpc.Server(BuilderServer())
         s.bind("tcp://%s" % hostname)
 
         print "Builder Server listening on %s" % hostname
@@ -203,5 +212,5 @@ if __name__ == '__main__':
 
     import sys
     hostname = sys.argv[1]
-    Builder.run(hostname)
+    BuilderServer.run(hostname)
 
